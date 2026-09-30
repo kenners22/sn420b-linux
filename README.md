@@ -24,7 +24,7 @@ One bash script, no vendor driver. It uses CUPS's built-in Zebra ZPL driver.
    OUT "marker"                       echo a marker so you know the reply has ended
    ```
    Send them to `/dev/usb/lp0` with `\r\n` line endings and read the reply from the same device.
-2. **"2.4 GHz only" isn't the whole story.** The Wi-Fi module on these (Feasycom FSC-BW236) scanned and joined a 5 GHz network in testing. If it won't join, a wrong password or a WPA3-only router is a more likely cause.
+2. **"2.4 GHz only" isn't the whole story.** The Wi-Fi module on these (Feasycom FSC-BW236) also listed 5 GHz networks in its `WIFI SCAN` during testing, and joined a dual-band router's network fine. If it won't join, check the password and WPA3-only settings before blaming the band.
 3. **Guest networks isolate clients.** Put the printer on your main network, or your computers won't be able to reach it.
 4. **CUPS Zebra ZPL driver + Ghostscript 10 bug.** The driver's default `Darkness=-1` makes Ghostscript abort, so no pages are ever produced. Setting any real darkness (this script uses 15) fixes it.
 
