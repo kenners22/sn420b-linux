@@ -122,8 +122,10 @@ cmd_wifi() {
     ip=$(usb_ip); [[ -n $ip && $ip != 0.0.0.0 ]] && break; sleep 5
   done
   if [[ -n $ip && $ip != 0.0.0.0 ]]; then
-    say "Printer joined \"$ssid\" at $ip"
-    say "Next: sn420b setup $ip"
+    ping -c1 -W2 "$ip" >/dev/null 2>&1 || true
+    local mac; mac=$(mac_of "$ip")
+    say "Printer joined \"$ssid\" at $ip${mac:+ (MAC ${mac^^})}"
+    say "Next: reserve $ip for that MAC in your router's DHCP settings, then: sn420b setup $ip"
   else
     say "Printer didn't get an IP. Re-check the password (it's case-sensitive), use your main"
     say "network rather than a guest one, and try WPA2 if your router is WPA3-only."

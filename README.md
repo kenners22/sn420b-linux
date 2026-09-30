@@ -51,7 +51,23 @@ sn420b test            # print a test label over Wi-Fi
 lp -d SN420B label.pdf
 ```
 
-Unplug USB once `sn420b wifi` reports an IP. Then **reserve that IP in your router's DHCP settings** so it never moves. If it does move, `sn420b fix` finds it again and repoints the queue.
+Unplug USB once `sn420b wifi` reports an IP.
+
+### Reserve the printer's IP in your router (do this!)
+
+By default your router hands out addresses with DHCP, so the printer can get a **different IP** after a power cut or router reboot. Every computer pointing at the old IP then silently stops printing. Fix it once with a **DHCP address reservation** (also called "static lease" or "fixed IP"):
+
+1. **Get the printer's Wi-Fi MAC address.** `sn420b wifi` prints it when the printer joins. It's also the `WIFI STA MAC` line on the self-test page (`sn420b selftest`), or run `ip neigh show <printer-ip>`. On these printers it usually starts `DC:0D:30`.
+2. **Open your router's admin page** (usually http://192.168.1.1 or http://192.168.0.1) and log in.
+3. **Find the reservation page.** On TP-Link it's *Advanced → Network → LAN Settings → Address Reservation*. On other routers look under *LAN*, *DHCP* or *Address reservation*.
+4. **Add an entry:** the printer's MAC plus the IP it currently has (or any free address in your LAN range). Save.
+5. If you picked a new IP, restart the printer, then run `sn420b setup <new-ip>`.
+
+Watch out for:
+- **Old entries:** if a previous attempt already reserved a *different* `DC:0D:30:…` MAC, that's a different printer or Wi-Fi chip. Check before deleting it.
+- **Range extenders / repeaters:** some rewrite the MAC of devices connected through them, so the router sees the extender's MAC instead of the printer's. Reserve while the printer is connected to the main router, or set the reservation on the extender if it supports that.
+
+If you can't reserve an address, `sn420b fix` rescans for the printer and repoints the queue whenever it moves.
 
 | Command | What it does |
 |---|---|
