@@ -31,7 +31,7 @@ One bash script, no vendor driver. It uses CUPS's built-in Zebra ZPL driver.
 ## Install
 
 ```bash
-git clone https://github.com/OWNER/sn420b-linux
+git clone https://github.com/kenners22/sn420b-linux
 cd sn420b-linux
 install -m755 sn420b ~/.local/bin/
 # optional: permanent USB access for your desktop user

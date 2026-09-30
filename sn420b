@@ -4,7 +4,7 @@
 # The 420B speaks ZPL, so it uses CUPS's built-in "Zebra ZPL" driver over raw
 # port 9100. Wi-Fi is set over USB with the printer's TSPL "WIFI ..." commands;
 # if DHCP moves the printer, "fix" rescans for it and repoints the queue.
-# https://github.com/OWNER/sn420b-linux
+# https://github.com/kenners22/sn420b-linux
 #
 #   sn420b wifi          join the printer to Wi-Fi over USB (prompts for password)
 #   sn420b usbip         ask the printer (over USB) what Wi-Fi IP it has
