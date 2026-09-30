@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# sn420b — set up an SN / Xprinter 420B label printer on Wi-Fi from Linux.
+#
+# The 420B speaks ZPL, so it uses CUPS's built-in "Zebra ZPL" driver over raw
+# port 9100. Wi-Fi is set over USB with the printer's TSPL "WIFI ..." commands;
+# if DHCP moves the printer, "fix" rescans for it and repoints the queue.
+# https://github.com/OWNER/sn420b-linux
+#
+#   sn420b wifi          join the printer to Wi-Fi over USB (prompts for password)
+#   sn420b usbip         ask the printer (over USB) what Wi-Fi IP it has
+#   sn420b selftest      print the self-test/config page (over USB)
+#   sn420b find          scan the LAN for the printer
+#   sn420b setup [IP]    add/update the CUPS queue "SN420B" (asks for sudo)
+#   sn420b fix           re-find the printer if its IP changed, repoint the queue
+#   sn420b status        show where it is and whether it's reachable
+#   sn420b test          print a test label straight to the printer
+set -euo pipefail
+
+QUEUE=SN420B
+PORT=9100
+PPD=drv:///sample.drv/zebra.ppd
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/sn420b.conf"
+DEV=${SN420B_DEV:-/dev/usb/lp0}
+
+IP="" MAC=""
+[[ -f $CONF ]] && source "$CONF"
+
+say() { printf '%s\n' "$*" >&2; }
+die() { say "error: $*"; exit 1; }
+
+subnet() {
+  ip -4 route | awk '/^default/ {print $5; exit}' | xargs -r ip -4 -o addr show dev |
+    awk '{split($4,a,"/"); split(a[1],o,"."); print o[1]"."o[2]"."o[3]; exit}'
+}
+
+port_open() { timeout 1 bash -c "</dev/tcp/$1/$PORT" 2>/dev/null; }
+
+mac_of() { ip neigh show "$1" | awk '/lladdr/ {print $5; exit}'; }
+
+save() { mkdir -p "$(dirname "$CONF")"; printf 'IP=%s\nMAC=%s\n' "$IP" "$MAC" >"$CONF"; }
+
+# Ping every address so the ARP table is fresh, then list hosts with 9100 open.
+scan() {
+  local net; net=$(subnet) || true
+  [[ -n $net ]] || die "not connected to a network"
+  say "Scanning $net.0/24 for printers on port $PORT…"
+  for i in $(seq 1 254); do ping -c1 -W1 "$net.$i" >/dev/null 2>&1 & done; wait
+  for i in $(seq 1 254); do (port_open "$net.$i" && echo "$net.$i") & done; wait
+}
+
+cmd_find() {
+  local hits; hits=$(scan | sort -t. -k4 -n)
+  [[ -n $hits ]] || { say "No printer found. Is it on and joined to Wi-Fi (2.4 GHz)?"; return 1; }
+  for h in $hits; do echo "$h  $(mac_of "$h")"; done
+}
+
+cmd_setup() {
+  local target=${1:-}
+  if [[ -z $target ]]; then
+    local hits; hits=$(scan)
+    local n; n=$(wc -w <<<"$hits")
+    (( n == 1 )) || { say "Found $n printers: ${hits:-none}. Run: sn420b setup <IP>"; exit 1; }
+    target=$hits
+  fi
+  port_open "$target" || die "$target isn't answering on port $PORT"
+  IP=$target MAC=$(mac_of "$target"); save
+  say "Setting up queue $QUEUE → socket://$IP:$PORT (sudo needed)"
+  sudo lpadmin -p "$QUEUE" -E -v "socket://$IP:$PORT" -m "$PPD" \
+    -D "SN 420B label printer" -L "Wi-Fi" -o PageSize=w288h432 -o Darkness-default=15 -o printer-error-policy=retry-job
+  say "Done. Print with: lp -d $QUEUE file.pdf   (4x6 labels)"
+}
+
+cmd_fix() {
+  [[ -n $IP ]] || die "no saved printer — run: sn420b setup"
+  if port_open "$IP"; then say "Printer still at $IP — nothing to fix."; return; fi
+  # Find it by its open print port (MAC is unreliable if it roams onto the
+  # TP-Link extender, which rewrites client MACs).
+  local hits; hits=$(scan)
+  local n; n=$(wc -w <<<"$hits")
+  (( n == 1 )) || die "found $n printers (${hits:-none}) — run: sn420b setup <IP>"
+  IP=$hits MAC=$(mac_of "$IP"); save
+  say "Printer moved to $IP; updating queue (sudo needed)"
+  sudo lpadmin -p "$QUEUE" -v "socket://$IP:$PORT"
+  sudo cupsenable "$QUEUE"
+}
+
+# Send a TSPL command over USB and print the reply up to an OUT marker.
+# Commands are the ones the vendor's "SN printer tool" uses.
+usb_cmd() {
+  [[ -e $DEV ]] || die "$DEV not found — is the printer plugged in by USB? (set SN420B_DEV to override)"
+  [[ -w $DEV ]] || die "no access to $DEV — run: sudo setfacl -m u:$USER:rw $DEV  (or install the udev rule)"
+  SN420B_DEV=$DEV python3 - "$1" "$2" "$3" <<'EOF'
+import os, sys, time, select
+cmd, marker, wait = sys.argv[1], sys.argv[2].encode(), float(sys.argv[3])
+fd = os.open(os.environ['SN420B_DEV'], os.O_RDWR | os.O_NONBLOCK)
+os.write(fd, cmd.encode())
+buf, end = b'', time.time() + wait
+while marker not in buf and time.time() < end:
+    select.select([fd], [], [], 0.5)
+    try: buf += os.read(fd, 4096)
+    except (BlockingIOError, OSError): pass
+os.close(fd)
+sys.stdout.write(buf.decode(errors='replace').replace(marker.decode(), '').strip())
+EOF
+}
+
+usb_ip() { usb_cmd $'WIFI GETIP\r\nOUT "SNIP"\r\n' SNIP 10 | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1; }
+
+cmd_wifi() {
+  local ssid pwd
+  read -rp "Wi-Fi network name (SSID): " ssid
+  [[ -n $ssid ]] || die "network name can't be empty"
+  read -rsp "Password for \"$ssid\" (hidden): " pwd; echo
+  [[ -n $pwd ]] || die "password can't be empty"
+  [[ $ssid$pwd != *'"'* ]] || die "names/passwords containing \" aren't supported by the printer command"
+  say "Sending Wi-Fi settings to the printer over USB…"
+  usb_cmd "WIFI CONNECTION \"$ssid\",\"$pwd\""$'\r\nWIFI RESET\r\nWIFI GETIP\r\nOUT "SNSET"\r\n' SNSET 40 >/dev/null
+  unset pwd
+  say "Waiting for it to join (up to ~60s)…"
+  local ip=""
+  for _ in $(seq 12); do
+    ip=$(usb_ip); [[ -n $ip && $ip != 0.0.0.0 ]] && break; sleep 5
+  done
+  if [[ -n $ip && $ip != 0.0.0.0 ]]; then
+    say "Printer joined \"$ssid\" at $ip"
+    say "Next: sn420b setup $ip"
+  else
+    say "Printer didn't get an IP. Re-check the password (it's case-sensitive), use your main"
+    say "network rather than a guest one, and try WPA2 if your router is WPA3-only."
+    return 1
+  fi
+}
+
+cmd_status() {
+  [[ -n $IP ]] || { say "Not set up yet — run: sn420b setup"; return 1; }
+  echo "Saved:  $IP ($MAC)"
+  if port_open "$IP"; then echo "Printer: reachable"; else echo "Printer: NOT reachable (try: sn420b fix)"; fi
+  lpstat -p "$QUEUE" -v "$QUEUE" 2>/dev/null || echo "CUPS queue $QUEUE: not installed"
+}
+
+cmd_test() {
+  local target=${1:-$IP}
+  [[ -n $target ]] || die "no printer — run: sn420b setup, or: sn420b test <IP>"
+  printf '^XA^PW812^LL1218^FO60,80^A0N,70,70^FDSN 420B^FS^FO60,180^A0N,40,40^FDWi-Fi printing OK^FS^FO60,240^A0N,30,30^FD%s  %s^FS^FO60,320^BY3^BCN,120,Y,N,N^FD%s^FS^XZ' \
+    "$target" "$(date '+%F %H:%M')" "SN420B" | socat -u - "TCP:$target:$PORT,connect-timeout=3"
+  say "Test label sent to $target"
+}
+
+case ${1:-help} in
+  find)   cmd_find ;;
+  setup)  shift; cmd_setup "${1:-}" ;;
+  fix)    cmd_fix ;;
+  status) cmd_status ;;
+  test)   shift; cmd_test "${1:-}" ;;
+  wifi)   cmd_wifi ;;
+  selftest) usb_cmd $'SELFTEST\r\nOUT "SNST"\r\n' SNST 10 >/dev/null; say "Self-test page sent" ;;
+  usbip)  usb_ip ;;
+  *)      sed -n '2,16s/^# \{0,1\}//p' "$0" ;;
+esac

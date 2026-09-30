@@ -1,0 +1,4 @@
+# Give the logged-in desktop user access to SN / Xprinter label printers over USB
+# (needed for `sn420b wifi`, `usbip`, `selftest`).
+SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", ATTRS{idVendor}=="2d37", TAG+="uaccess"
+SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", ATTRS{idVendor}=="2d84", TAG+="uaccess"
