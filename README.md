@@ -23,7 +23,7 @@ One small Rust program, no vendor driver. It uses CUPS's built-in Zebra ZPL driv
    WIFI GETSTATUS                     reply: +OK_..._STATUS
    OUT "marker"                       echo a marker so you know the reply has ended
    ```
-   Send them to `/dev/usb/lp0` with `\r\n` line endings and read the reply from the same device.
+   Send them to the printer's `/dev/usb/lpN` with `\r\n` line endings and read the reply from the same device. `sn420b` finds the right `lpN` by USB vendor id, so another USB printer plugged in at the same time is left alone (`SN420B_DEV=/dev/usb/lp1` overrides).
 2. **"2.4 GHz only" isn't the whole story.** The Wi-Fi module on these (Feasycom FSC-BW236) also listed 5 GHz networks in its `WIFI SCAN` during testing, and joined a dual-band router's network fine. If it won't join, check the password and WPA3-only settings before blaming the band.
 3. **Guest networks isolate clients.** Put the printer on your main network, or your computers won't be able to reach it.
 4. **CUPS Zebra ZPL driver + Ghostscript 10 bug.** The driver's default `Darkness=-1` makes Ghostscript abort, so no pages are ever produced. Setting any real darkness (this script uses 15) fixes it.
@@ -38,7 +38,7 @@ install -m755 target/release/sn420b ~/.local/bin/
 # optional: permanent USB access for your desktop user
 sudo cp 70-sn420b.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
 ```
-Without the udev rule, grant access for this session with `sudo setfacl -m u:$USER:rw /dev/usb/lp0`.
+Without the udev rule, grant access until it's unplugged with `sudo setfacl -m u:$USER:rw /dev/usb/lpN` (usually `lp0`; `ls /dev/usb/`).
 
 Building needs a Rust toolchain (`rustup` or your distro's `cargo`). At runtime it needs only `cups` (`lpadmin`, `lpstat`), plus `sudo` for `setup` and `fix`.
 
@@ -75,7 +75,7 @@ If you can't reserve an address, `sn420b fix` rescans for the printer and repoin
 | `wifi` | Join Wi-Fi over USB. The password is typed at a hidden prompt, sent only to the printer, never stored |
 | `usbip` | Ask the printer over USB for its current Wi-Fi IP |
 | `selftest` | Print the self-test / configuration page |
-| `find` | Scan your /24 for hosts with port 9100 open |
+| `find` | Scan your /24 for hosts with port 9100 open (skipping printers that also answer IPP on 631, like most office inkjets) |
 | `setup [IP]` | Create or update the CUPS queue (uses sudo) |
 | `fix` | Printer unreachable? Rescan and repoint the queue |
 | `status` | Show the saved IP, whether it's reachable, and the queue state |
@@ -92,6 +92,8 @@ Other Xprinter-family models (the vendor tool also lists the D463B, D465B, 410B,
 
 - CUPS prints *"Printer drivers are deprecated"* when adding the queue. That's a warning only. It still works on CUPS 2.x.
 - The printer doesn't answer status queries over the network, so `status` only checks whether it's reachable.
+- Many office printers (e.g. HP DeskJets) also listen on raw port 9100. The scan skips anything that answers IPP on port 631, which the 420B doesn't, so `find`, `setup` and `fix` don't mistake them for the label printer.
+- Companion project for an HP DeskJet 3750 (Wi-Fi setup over USB, no HPLIP): [deskjet-linux](https://github.com/kenners22/deskjet-linux).
 
 ## License
 

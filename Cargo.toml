@@ -1,6 +1,6 @@
 [package]
 name = "sn420b"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Set up an SN / Xprinter 420B label printer on Wi-Fi from Linux"
 license = "MIT"
