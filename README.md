@@ -40,7 +40,7 @@ sudo cp 70-sn420b.rules /etc/udev/rules.d/ && sudo udevadm control --reload && s
 ```
 Without the udev rule, grant access for this session with `sudo setfacl -m u:$USER:rw /dev/usb/lp0`.
 
-Building needs a Rust toolchain (`rustup` or your distro's `cargo`). At runtime it needs `cups` (`lpadmin`, `lpstat`), `sudo` and `ping`.
+Building needs a Rust toolchain (`rustup` or your distro's `cargo`). At runtime it needs only `cups` (`lpadmin`, `lpstat`), plus `sudo` for `setup` and `fix`.
 
 The original bash script (`sn420b` in the repo root) still works and does the same thing; it needs `bash`, `python3`, `socat`, `cups` and `ping`.
 

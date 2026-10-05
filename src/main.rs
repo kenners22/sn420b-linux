@@ -161,26 +161,13 @@ fn mac_of(ip: &str) -> String {
     fs::read_to_string("/proc/net/arp").ok().and_then(|t| parse_arp(&t, ip)).unwrap_or_default()
 }
 
-fn ping_once(ip: &str, wait_secs: u32) -> Option<process::Child> {
-    Command::new("ping")
-        .args(["-c1", &format!("-W{wait_secs}"), ip])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()
-}
-
-/// Ping every address so the ARP table is fresh, then list hosts with 9100 open.
+/// List hosts on this /24 with port 9100 open. Each connect attempt makes the
+/// kernel resolve the host's MAC, so the ARP table is fresh afterwards.
 fn scan() -> Vec<String> {
     let net = subnet().unwrap_or_else(|| die("not connected to a network"));
     let prefix = format!("{}.{}.{}", net[0], net[1], net[2]);
     say!("Scanning {prefix}.0/24 for printers on port {PORT}…");
     let hosts: Vec<String> = (1..=254).map(|i| format!("{prefix}.{i}")).collect();
-
-    let pings: Vec<_> = hosts.iter().filter_map(|h| ping_once(h, 1)).collect();
-    for mut p in pings {
-        let _ = p.wait();
-    }
 
     let checks: Vec<_> = hosts
         .into_iter()
@@ -461,9 +448,7 @@ fn cmd_wifi() {
     }
     match ip {
         Some(ip) => {
-            if let Some(mut p) = ping_once(&ip, 2) {
-                let _ = p.wait();
-            }
+            port_open(&ip); // fills the ARP entry so we can show the MAC
             let mac = mac_of(&ip);
             let mac_note = if mac.is_empty() { String::new() } else { format!(" (MAC {})", mac.to_uppercase()) };
             say!("Printer joined \"{ssid}\" at {ip}{mac_note}");
