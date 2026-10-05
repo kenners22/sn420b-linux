@@ -2,7 +2,7 @@
 
 Get an **SN 420B / Xprinter XP-420B** 4x6 thermal label printer (sold under several brands, e.g. Vretti) onto **Wi-Fi and printing from Linux**, even when the phone app refuses to connect.
 
-One bash script, no vendor driver. It uses CUPS's built-in Zebra ZPL driver.
+One small Rust program, no vendor driver. It uses CUPS's built-in Zebra ZPL driver.
 
 ## Symptoms this fixes
 
@@ -33,13 +33,16 @@ One bash script, no vendor driver. It uses CUPS's built-in Zebra ZPL driver.
 ```bash
 git clone https://github.com/kenners22/sn420b-linux
 cd sn420b-linux
-install -m755 sn420b ~/.local/bin/
+cargo build --release
+install -m755 target/release/sn420b ~/.local/bin/
 # optional: permanent USB access for your desktop user
 sudo cp 70-sn420b.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
 ```
 Without the udev rule, grant access for this session with `sudo setfacl -m u:$USER:rw /dev/usb/lp0`.
 
-Needs `bash`, `python3`, `socat`, `cups` and `ping`.
+Building needs a Rust toolchain (`rustup` or your distro's `cargo`). At runtime it needs only `cups` (`lpadmin`, `lpstat`), plus `sudo` for `setup` and `fix`.
+
+The original bash script (`sn420b` in the repo root) still works and does the same thing; it needs `bash`, `python3`, `socat`, `cups` and `ping`.
 
 ## Use
 
